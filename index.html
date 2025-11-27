@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Draft Pad — Bookmarks & Save</title>
+<title>Draft Pad — Bookmarks & Save (Revised)</title>
 <style>
   :root{
     --bg:#fafafa;
@@ -56,7 +56,6 @@
   .dropdown{
     position:absolute;
     top:56px;
-    left:0;
     min-width:240px;
     background:#fff;
     box-shadow:0 10px 30px rgba(0,0,0,0.12);
@@ -74,7 +73,8 @@
   .save-box input{flex:1;padding:8px;border-radius:8px;border:1px solid #ddd}
   .save-box button{padding:8px 10px;border-radius:8px;border:none;background:#222;color:#fff;cursor:pointer}
 
-  /* small responsive tweak */
+  .small{font-size:12px;color:#666;padding:6px}
+
   @media (max-width:480px){
     header{padding:10px}
     .iconBtn{width:40px;height:40px}
@@ -84,34 +84,28 @@
 <body>
 
 <header>
-  <div id="bookmarkBtn" class="iconBtn" title="Bookmarks">
-    <!-- simple bookmark SVG -->
+  <div id="bookmarkBtn" class="iconBtn" title="Bookmarks" aria-haspopup="true" aria-expanded="false">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M6 2h12v18l-6-4-6 4V2z" stroke="#111" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
     </svg>
 
-    <!-- bookmarks dropdown -->
     <div id="bookmarkDropdown" class="dropdown" style="left:0">
       <div style="padding:8px 10px;font-weight:700;">Bookmarked</div>
       <div style="height:1px;background:#e4e4e4;margin:6px 8px;border-radius:2px;"></div>
-      <div class="bookmark-list" id="bookmarkList">
-        <!-- items appended here -->
-      </div>
-      <div style="padding:8px;color:#666;font-size:13px">Tap item to open page</div>
+      <div class="bookmark-list" id="bookmarkList"></div>
+      <div class="small">Tap item to open page</div>
     </div>
   </div>
 
   <div id="nav">Page 1</div>
 
   <div style="display:flex;gap:10px;align-items:center">
-    <div id="saveBtn" class="iconBtn" title="Save page">
-      <!-- plus in circle -->
+    <div id="saveBtn" class="iconBtn" title="Save page" aria-haspopup="true" aria-expanded="false">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
         <circle cx="12" cy="12" r="9" stroke="#111" stroke-width="1.6" fill="none"></circle>
         <path d="M12 8v8M8 12h8" stroke="#111" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
 
-      <!-- save dropdown -->
       <div id="saveDropdown" class="dropdown" style="right:0;left:auto;">
         <div style="padding:8px 10px;font-weight:700">Save page</div>
         <div style="height:1px;background:#e4e4e4;margin:6px 8px;border-radius:2px;"></div>
@@ -119,25 +113,25 @@
           <input id="saveTitle" placeholder="Page title (optional)" />
           <button id="doSave">Save</button>
         </div>
-        <div style="padding:8px;color:#666;font-size:13px">Saved titles appear in Bookmarks</div>
+        <div class="small">Saved titles appear in Bookmarks</div>
       </div>
     </div>
   </div>
 </header>
 
 <div class="stage">
-  <div id="prevBtn" class="sideBtn" title="Previous">&#8592;</div>
+  <div id="prevBtn" class="sideBtn" title="Previous" aria-label="Previous page">&#8592;</div>
 
   <div id="paperContainer">
     <div id="paper">
-      <canvas id="canvas"></canvas>
+      <canvas id="canvas" aria-label="Drawing canvas"></canvas>
       <div class="corner"></div>
-      <div id="textLayer" contenteditable="true" spellcheck="false"></div>
+      <div id="textLayer" contenteditable="true" spellcheck="false" aria-label="Text layer"></div>
     </div>
-    <div id="resizeFloating">+</div>
+    <div id="resizeFloating" title="Drag to resize">+</div>
   </div>
 
-  <div id="nextBtn" class="sideBtn" title="Next">&#8594;</div>
+  <div id="nextBtn" class="sideBtn" title="Next" aria-label="Next page">&#8594;</div>
 </div>
 
 <script>
@@ -167,6 +161,9 @@ const doSaveBtn = document.getElementById('doSave');
 let pages = [];
 let currentIndex = 0;
 
+/* ---------- UTILS ---------- */
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
 /* ---------- canvas sizing ---------- */
 function fitCanvas(){
   const rect = canvas.getBoundingClientRect();
@@ -178,27 +175,30 @@ function fitCanvas(){
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', ()=>{ fitCanvas(); positionFloatingHandle(); });
+fitCanvas();
 
-/* ---------- init pages / restore titles ---------- */
+/* ---------- storage keys & init ---------- */
+const STORAGE_KEY = 'draftpad_pages_v2_revised';
+
 function initPages(){
-  const stored = localStorage.getItem('draftpad_pages_v2');
+  const stored = localStorage.getItem(STORAGE_KEY);
   if (stored){
     try{
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length){
         pages = parsed.map(p => ({ img: null, html: p.html || '', title: p.title || null }));
       }
-    }catch(e){}
+    }catch(e){ pages = []; }
   }
   if (pages.length === 0) pages = [{ img: null, html: '', title: null }];
   currentIndex = 0;
+  loadPage(currentIndex);
   updateNav();
 }
 initPages();
 
 /* ---------- drawing ---------- */
 let drawing=false;
-let last={x:0,y:0};
 const brush = { size:3 };
 
 function getPointerPos(e){
@@ -208,26 +208,20 @@ function getPointerPos(e){
 }
 
 function strokeStart(e){
+  // if text is focused on desktop, avoid starting a stroke
   if (document.activeElement === textLayer && !isMobile) return;
   drawing = true;
   const p = getPointerPos(e);
-  last = p;
-  ctx.beginPath();
-  ctx.moveTo(p.x, p.y);
+  ctx.beginPath(); ctx.moveTo(p.x, p.y);
   e.preventDefault();
 }
 function strokeMove(e){
   if (!drawing) return;
   const p = getPointerPos(e);
-  ctx.lineTo(p.x, p.y);
-  ctx.lineWidth = brush.size;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#fff';
-  ctx.stroke();
-  last = p;
+  ctx.lineTo(p.x, p.y); ctx.lineWidth = brush.size; ctx.lineCap='round'; ctx.strokeStyle='#fff'; ctx.stroke();
   e.preventDefault();
 }
-function strokeEnd(e){ drawing = false; }
+function strokeEnd(e){ drawing=false; }
 
 canvas.addEventListener('mousedown', strokeStart);
 window.addEventListener('mousemove', strokeMove);
@@ -236,31 +230,26 @@ canvas.addEventListener('touchstart', strokeStart, {passive:false});
 canvas.addEventListener('touchmove', strokeMove, {passive:false});
 canvas.addEventListener('touchend', strokeEnd);
 
-/* ---------- text layer focus behavior ---------- */
+/* ---------- text layer focus ---------- */
 function focusTextIfDesktop(){
   if (!isMobile){
     setTimeout(()=> {
       textLayer.focus();
-      const range = document.createRange();
-      range.selectNodeContents(textLayer);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
+      const range = document.createRange(); range.selectNodeContents(textLayer); range.collapse(false);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
     }, 60);
   } else {
-    // mobile hint
     if (!textLayer.innerText.trim()){
       textLayer.innerText = 'Tap to type';
       textLayer.style.opacity = '0.7';
-      textLayer.addEventListener('focus', ()=> textLayer.style.opacity = '1', {once:true});
+      textLayer.addEventListener('focus', ()=> textLayer.style.opacity='1', {once:true});
       textLayer.addEventListener('focus', ()=> { if (textLayer.innerText.trim()==='Tap to type') textLayer.innerText=''; }, {once:true});
     }
   }
 }
 focusTextIfDesktop();
 
-/* ---------- save/load page helpers ---------- */
+/* ---------- save/load helpers ---------- */
 function saveCurrentPage(){
   try{
     const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
@@ -269,10 +258,10 @@ function saveCurrentPage(){
     pages[currentIndex].img = null;
   }
   pages[currentIndex].html = textLayer.innerHTML;
-  // persist titles + html (no image binary)
+  // persist minimal state (html + titles)
   try {
-    localStorage.setItem('draftpad_pages_v2', JSON.stringify(pages.map(p=>({ html: p.html||'', title: p.title||null }))));
-  } catch(e){}
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pages.map(p=>({ html: p.html||'', title: p.title||null }))));
+  } catch(e){ console.warn('localStorage save failed', e); }
 }
 
 function loadPage(index){
@@ -280,7 +269,7 @@ function loadPage(index){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   const p = pages[index];
   textLayer.innerHTML = p.html || '';
-  // try restore image if available
+  // restore image if available
   if (p.img){
     try{
       if (p.img.width === canvas.width && p.img.height === canvas.height){
@@ -291,11 +280,11 @@ function loadPage(index){
         tmp.getContext('2d').putImageData(p.img,0,0);
         ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
       }
-    }catch(e){}
+    }catch(e){ console.warn('restore image failed', e); }
   }
 }
 
-/* ---------- navigation / animation ---------- */
+/* ---------- nav & animation ---------- */
 function updateNav(){ navLabel.textContent = `Page ${currentIndex + 1}`; updateBookmarkList(); }
 
 function animateSlide(dir, onComplete){
@@ -308,10 +297,7 @@ function animateSlide(dir, onComplete){
     setTimeout(()=> {
       container.style.transition = 'transform .26s ease';
       container.style.transform = 'translateX(0)';
-      setTimeout(()=> {
-        container.style.transition = '';
-        if (onComplete) onComplete();
-      }, 260);
+      setTimeout(()=> { container.style.transition = ''; if (onComplete) onComplete(); }, 260);
     }, 40);
   }, 260);
 }
@@ -352,9 +338,10 @@ function positionFloatingHandle(){
   handle.style.top = top + 'px';
   handle.style.position = 'absolute';
 }
+positionFloatingHandle();
+
 function beginResize(e){
   e.preventDefault();
-  let resizing=true;
   const p = e.touches ? e.touches[0] : e;
   const startX = p.clientX, startY = p.clientY;
   const cr = container.getBoundingClientRect();
@@ -378,7 +365,6 @@ resizeHandle.addEventListener('touchstart', beginResize, {passive:false});
 
 /* ---------- bookmarks UI ---------- */
 function updateBookmarkList(){
-  // builds the bookmark list from pages where title exists
   bookmarkList.innerHTML = '';
   pages.forEach((p, idx) => {
     if (p.title){
@@ -386,7 +372,6 @@ function updateBookmarkList(){
       item.className = 'bookmark-item';
       item.innerHTML = `<div><strong>${escapeHtml(p.title)}</strong><div style="font-size:12px;color:#666">Page ${idx+1}</div></div><div style="font-size:12px;color:#666">Open</div>`;
       item.addEventListener('click', ()=>{
-        // open page
         saveCurrentPage();
         currentIndex = idx;
         loadPage(currentIndex);
@@ -403,62 +388,76 @@ function updateBookmarkList(){
   }
 }
 
+/* ---------- DROPDOWN logic (fixed) ---------- */
+/* toggleDropdown closes others and toggles target */
 function toggleDropdown(el, forcedState){
   const want = typeof forcedState === 'boolean' ? forcedState : !el.classList.contains('open');
-  // close others
-  [bookmarkDropdown, saveDropdown].forEach(d => { if (d !== el) d.classList.remove('open') });
-  if (want) el.classList.add('open'); else el.classList.remove('open');
+  // close all first
+  [bookmarkDropdown, saveDropdown].forEach(d => d.classList.remove('open'));
+  if (want) el.classList.add('open');
+  // update aria-expanded on buttons
+  bookmarkBtn.setAttribute('aria-expanded', bookmarkDropdown.classList.contains('open'));
+  saveBtn.setAttribute('aria-expanded', saveDropdown.classList.contains('open'));
 }
+
+/* Prevent clicks inside dropdown from bubbling up to document click handler */
+saveDropdown.addEventListener('click', e => e.stopPropagation());
+bookmarkDropdown.addEventListener('click', e => e.stopPropagation());
 
 /* click handlers to open dropdowns */
 bookmarkBtn.addEventListener('click', (ev)=>{
   updateBookmarkList();
   toggleDropdown(bookmarkDropdown);
-  // position left-based
   bookmarkDropdown.style.left = '0px';
   bookmarkDropdown.style.right = 'auto';
   ev.stopPropagation();
 });
 saveBtn.addEventListener('click', (ev)=>{
-  // prefill input with existing title if present
   saveTitleInput.value = pages[currentIndex] && pages[currentIndex].title ? pages[currentIndex].title : '';
   toggleDropdown(saveDropdown);
-  // align to right edge
   saveDropdown.style.right = '0px'; saveDropdown.style.left = 'auto';
+  // focus input a tick later so it receives keyboard/focus
+  setTimeout(()=> saveTitleInput.focus(), 40);
   ev.stopPropagation();
 });
 
 /* save action: save current page title */
-doSaveBtn.addEventListener('click', ()=>{
+doSaveBtn.addEventListener('click', (ev)=>{
+  ev.stopPropagation();
   const title = saveTitleInput.value.trim();
-  if (!title){
-    // if empty, remove title/bookmark for current page
-    pages[currentIndex].title = null;
-  } else {
-    pages[currentIndex].title = title;
-  }
+  pages[currentIndex].title = title ? title : null;
   saveCurrentPage();
   updateBookmarkList();
   toggleDropdown(saveDropdown, false);
 });
 
-/* click outside to close dropdowns */
-document.addEventListener('click', (e)=>{
-  if (!bookmarkBtn.contains(e.target)) bookmarkDropdown.classList.remove('open');
-  if (!saveBtn.contains(e.target)) saveDropdown.classList.remove('open');
+/* Also allow Enter key inside input to save */
+saveTitleInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    doSaveBtn.click();
+  }
 });
 
-/* helper to escape HTML for safety when injecting titles */
-function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+/* click outside to close dropdowns (safe check using contains) */
+document.addEventListener('click', (e)=>{
+  // if click target is not inside bookmarkBtn or its dropdown, close it
+  if (!bookmarkBtn.contains(e.target) && !bookmarkDropdown.contains(e.target)) bookmarkDropdown.classList.remove('open');
+  if (!saveBtn.contains(e.target) && !saveDropdown.contains(e.target)) saveDropdown.classList.remove('open');
+  // update aria states
+  bookmarkBtn.setAttribute('aria-expanded', bookmarkDropdown.classList.contains('open'));
+  saveBtn.setAttribute('aria-expanded', saveDropdown.classList.contains('open'));
+});
 
 /* ---------- persist minimal state on unload ---------- */
 window.addEventListener('beforeunload', ()=> saveCurrentPage());
 
 /* ---------- initial paint / restore ---------- */
-fitCanvas(); loadPage(0); updateNav();
+fitCanvas();
+loadPage(0);
+updateNav();
 setTimeout(positionFloatingHandle, 150);
 
 </script>
 </body>
 </html>
-
