@@ -421,16 +421,34 @@ saveBtn.addEventListener('click', (ev)=>{
   ev.stopPropagation();
 });
 
-/* save action: save current page title */
-doSaveBtn.addEventListener('click', (ev)=>{
-  ev.stopPropagation();
-  const title = saveTitleInput.value.trim();
-  pages[currentIndex].title = title ? title : null;
-  saveCurrentPage();
-  updateBookmarkList();
-  toggleDropdown(saveDropdown, false);
-});
+// Helper: ensures pages[currentIndex] always exists
+function ensureCurrentPageExists() {
+  if (!Array.isArray(pages)) pages = [];
+  if (typeof currentIndex !== 'number' || currentIndex < 0) currentIndex = 0;
+  if (!pages[currentIndex]) {
+    pages[currentIndex] = { img: null, html: '', title: null };
+  }
+  return pages[currentIndex];
+}
 
+/* Fixed save handler */
+doSaveBtn.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+
+  try {
+    const page = ensureCurrentPageExists();
+    const title = saveTitleInput.value.trim();
+    page.title = title ? title : null;
+
+    saveCurrentPage();
+    updateBookmarkList();
+    toggleDropdown(saveDropdown, false);
+  } catch (err) {
+    console.error('Save failed:', err, { currentIndex, pages });
+    alert('Save failed — check console for details.');
+  }
+});
+  
 /* Also allow Enter key inside input to save */
 saveTitleInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
@@ -461,3 +479,4 @@ setTimeout(positionFloatingHandle, 150);
 </script>
 </body>
 </html>
+
